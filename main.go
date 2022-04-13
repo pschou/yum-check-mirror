@@ -43,8 +43,9 @@ func main() {
 	}
 
 	var basePath = flag.String("path", ".", "Path to the mirror base")
-	var inRepoPath = flag.String("repo", "/", "Repo to check")
+	var inRepoPath = flag.String("repo", "", "Repo to check (example \"/7/os/x86_64\")")
 	var outputFile = flag.String("output", "-", "Output file to put the results of the check")
+	var repodata = flag.String("repodata", "", "Explicit path to /repodata/ to check (example \"/downloads/yum/20220101/\")")
 	var insecure = flag.Bool("insecure", false, "Skip signature checks")
 	var keyringFile = flag.String("keyring", "keys/", "Use keyring for verifying, keyring.gpg or keys/ directory")
 	debug = flag.Bool("debug", false, "Turn on debug, more verbose")
@@ -93,6 +94,10 @@ func main() {
 		repoPathSlash := path.Join(*basePath, repoPath) + "/"
 		repomdPath := repoPathSlash + "repodata/repomd.xml"
 		repomdPathGPG := repoPathSlash + "repodata/repomd.xml.asc"
+		if *repodata != "" {
+			repomdPath = path.Join(*repodata, "repomd.xml")
+			repomdPathGPG = path.Join(*repodata, "repomd.xml.asc")
+		}
 		//log.Println("Loading", repomdPath)
 
 		dat := readRepomdFile(repomdPath)
