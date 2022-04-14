@@ -30,12 +30,12 @@ Here we create an empty file which is not found in the repo metadata and run pru
 $ touch test/Packages/my_null.rpm
 
 # verify the list to be deleted
-$ ./yum-check-mirror -insecure -path test/ -repo / -prune-test -output /dev/null -multi
+$ ./yum-check-mirror -insecure -path test/ -repo / -prune-test -output files_to_get.txt -multi
 Scanning for files to delete in test/
 -  test/Packages/my_null.rpm
 
 # to delete
-$ ./yum-check-mirror -insecure -path test/ -repo / -prune -output /dev/null -multi
+$ ./yum-check-mirror -insecure -path test/ -repo / -prune -output files_to_get.txt -multi
 ```
 
 # Usage help:
