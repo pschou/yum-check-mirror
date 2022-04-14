@@ -23,6 +23,21 @@ $ cat missing.txt
 {sha256}a3439f8e58a3800ed6d1769daaa4580f5a7732e00c38311cf64ea9da24f2656b 112656 Packages/GConf2-devel-3.2.6-8.el7.x86_64.rpm
 ```
 
+## Prune old packages:
+Here we create an empty file which is not found in the repo metadata and run prune to verify and then delete the file:
+```
+# create an empty rpm
+$ touch test/Packages/my_null.rpm
+
+# verify the list to be deleted
+$ ./yum-check-mirror -insecure -path test/ -repo / -prune-test -output /dev/null -multi
+Scanning for files to delete in test/
+-  test/Packages/my_null.rpm
+
+# to delete
+$ ./yum-check-mirror -insecure -path test/ -repo / -prune -output /dev/null -multi
+```
+
 # Usage help:
 ```bash
 $ ./yum-check-mirror -h
