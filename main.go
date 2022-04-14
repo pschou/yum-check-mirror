@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"hash"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -44,9 +45,14 @@ func main() {
 
 	var basePath = flag.String("path", ".", "Path to the mirror base")
 	var inRepoPath = flag.String("repo", "", "Repo to check (example \"/7/os/x86_64\")")
-	var outputFile = flag.String("output", "-", "Output file to put the results of the check")
+	var outputFile = flag.String("output", "-", "Output file to put the file list, the failed results of the check")
+	//	"Note: Secondary repos are not included for bad/missing files, only the primary.")
 	var repodata = flag.String("repodata", "", "Explicit path to /repodata/ to check (example \"/downloads/yum/20220101/\")")
 	var insecure = flag.Bool("insecure", false, "Skip signature checks")
+	var prune = flag.Bool("prune", false, "Find and remove un-used packages in repo (.rpm)")
+	var pruneTestonly = flag.Bool("prune-test", false, "Find and display all un-used packages in repo (.rpm)")
+	var scanMulti = flag.Bool("multi", false, "Scan for multiple package lists in repo directory.  Note: Secondary lists are\n"+
+		"insecure as they are missing the GPG signature file, and may not be a complete set!")
 	var keyringFile = flag.String("keyring", "keys/", "Use keyring for verifying, keyring.gpg or keys/ directory")
 	debug = flag.Bool("debug", false, "Turn on debug, more verbose")
 	flag.Parse()
@@ -91,14 +97,15 @@ func main() {
 
 	// Load in the repomd file.xml and parse it
 	{
-		repoPathSlash := path.Join(*basePath, repoPath) + "/"
-		repomdPath := repoPathSlash + "repodata/repomd.xml"
-		repomdPathGPG := repoPathSlash + "repodata/repomd.xml.asc"
-		if *repodata != "" {
-			repomdPath = path.Join(*repodata, "repomd.xml")
-			repomdPathGPG = path.Join(*repodata, "repomd.xml.asc")
+		if *repodata == "" {
+			*repodata = path.Join(*basePath, repoPath) + "/repodata"
 		}
-		//log.Println("Loading", repomdPath)
+		repomdPath := path.Join(*repodata, "repomd.xml")
+		repomdPathGPG := path.Join(*repodata, "repomd.xml.asc")
+
+		if *debug {
+			log.Println("Loading", repomdPath)
+		}
 
 		dat := readRepomdFile(repomdPath)
 		if dat == nil {
@@ -160,7 +167,6 @@ func main() {
 			dat.ascFileContents = gpgFile
 			fmt.Println("GPG Verified!")
 		}
-		dat.path = repoPathSlash
 		latestRepomd = *dat
 	}
 
@@ -185,9 +191,56 @@ func main() {
 	if pkgFile == "" {
 		log.Fatal("Could not find primary file")
 	}
+
+	if *debug {
+		fmt.Println("Loading", pkgFile)
+	}
 	packages := readPackageFile(pkgFile)
 
-	for _, pkg := range packages {
+	packagesMap := make(map[string]*Package)
+	for i, pkg := range packages {
+		//fmt.Println("adding to map", path.Join(repoPath, pkg.Location.Href), pkg)
+		packagesMap[path.Join(repoPath, pkg.Location.Href)] = &packages[i]
+	}
+
+	// Scan multiple file lists in the same folder
+	if *scanMulti {
+		//fmt.Println("scanMulti", scanMulti)
+		files, err := ioutil.ReadDir(*repodata)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+
+			var sPath string
+			if strings.HasSuffix(file.Name(), "-primary.xml.gz") {
+				fileName := path.Join(*repodata, file.Name())
+				if fileName == pkgFile {
+					continue
+				}
+				if *debug {
+					fmt.Println("Loading", fileName)
+				}
+				secondary := readPackageFile(fileName)
+				for i, pkg := range secondary {
+					sPath = path.Join(repoPath, pkg.Location.Href)
+					if p, ok := packagesMap[sPath]; ok {
+						if pkg.Checksum.Text != p.Checksum.Text {
+							fmt.Println("File has been changed, odd:", sPath)
+						}
+					} else {
+						packagesMap[sPath] = &secondary[i]
+					}
+				}
+			}
+		}
+	}
+
+	for _, pkg := range packagesMap {
 		// pkg: {XMLName:{Space:http://linux.duke.edu/metadata/common Local:package} Type:rpm Name:ImageMagick-c++ Checksum:{Text:f1599688dc9666846ae40b8c303967bac615f9d2d54c2538b3ae8c1555e169b2 Type:sha256 Pkgid:YES} Size:{Text: Package:171852 Installed:636081 Archive:637668} Location:{Text: Href:Packages/ImageMagick-c++-6.9.10.68-3.el7.x86_64.rpm}}
 		fileData := checkWithChecksum(path.Join(*basePath, repoPath, pkg.Location.Href), pkg.Checksum.Text, pkg.Checksum.Type)
 		if !fileData {
@@ -199,6 +252,34 @@ func main() {
 			fmt.Println("passed", path.Join(repoPath, pkg.Location.Href))
 		}
 	}
+
+	if *prune || *pruneTestonly {
+		if *pruneTestonly {
+			fmt.Println("Scanning for files to delete in", *basePath)
+		}
+		err := filepath.Walk(*basePath, func(filePath string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return err
+			}
+			if strings.HasSuffix(filePath, ".rpm") {
+				relPath := strings.TrimPrefix(filePath, *basePath)
+				_, ok := packagesMap[relPath]
+				//fmt.Printf("name: %s inmap: %v pkg: %+v\n", filePath, ok, pkg)
+				if !ok {
+					if *pruneTestonly {
+						fmt.Println("- ", filePath)
+					} else {
+						os.Remove(filePath)
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			log.Fatal("Error pruning:", err)
+		}
+	}
+
 	os.Exit(exitCode)
 }
 

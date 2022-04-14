@@ -26,7 +26,7 @@ $ cat missing.txt
 # Usage help:
 ```bash
 $ ./yum-check-mirror -h
-Yum Check Mirror,  Version: 0.1.20220413.0607
+Yum Check Mirror,  Version: 0.1.20220413.2222
 
 Usage: ./yum-check-mirror [options...]
 
@@ -36,10 +36,17 @@ Usage: ./yum-check-mirror [options...]
         Skip signature checks
   -keyring string
         Use keyring for verifying, keyring.gpg or keys/ directory (default "keys/")
+  -multi
+        Scan for multiple package lists in repo directory.  Note: Secondary lists are
+        insecure as they are missing the GPG signature file, and may not be a complete set!
   -output string
-        Output file to put the results of the check (default "-")
+        Output file to put the file list, the failed results of the check (default "-")
   -path string
         Path to the mirror base (default ".")
+  -prune
+        Find and remove un-used packages in repo (.rpm)
+  -prune-test
+        Find and display all un-used packages in repo (.rpm)
   -repo string
         Repo to check (example "/7/os/x86_64")
   -repodata string
